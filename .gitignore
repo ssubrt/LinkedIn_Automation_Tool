@@ -1,0 +1,18 @@
+# Environment variables
+.env
+
+# Browser data (session persistence)
+browser_data/
+
+# Database and application data
+data/
+
+# Build artifacts
+linkedin-automation
+linkedin-automation.exe
+*.db
+*.db-journal
+
+# OS files
+.DS_Store
+Thumbs.db
