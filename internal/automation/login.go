@@ -68,6 +68,36 @@ func LoginLinkedln(page *rod.Page, email string, password string) error {
 	stealth.RandomDelay(3000, 5000)
 	page.MustWaitLoad()
 
+	// Check for 2FA/CAPTCHA challenges
+	logger.Info("Checking for 2FA or CAPTCHA challenges")
+
+	// Check for 2FA challenge
+	twoFAChallenge, _ := page.Element("#challenge")
+	if twoFAChallenge != nil {
+		logger.Warning("2FA challenge detected! Manual intervention required.")
+		logger.Info("Please complete 2FA verification manually. Waiting 60 seconds...")
+		stealth.RandomDelay(60000, 61000) // Wait 60 seconds for manual intervention
+		page.MustWaitLoad()
+	}
+
+	// Check for CAPTCHA
+	captchaChallenge, _ := page.Element(".g-recaptcha")
+	if captchaChallenge != nil {
+		logger.Warning("CAPTCHA challenge detected! Manual intervention required.")
+		logger.Info("Please complete CAPTCHA verification manually. Waiting 60 seconds...")
+		stealth.RandomDelay(60000, 61000) // Wait 60 seconds for manual intervention
+		page.MustWaitLoad()
+	}
+
+	// Check for security verification
+	securityChallenge, _ := page.Element("form[action*='checkpoint']")
+	if securityChallenge != nil {
+		logger.Warning("Security verification detected! Manual intervention required.")
+		logger.Info("Please complete security verification manually. Waiting 60 seconds...")
+		stealth.RandomDelay(60000, 61000) // Wait 60 seconds for manual intervention
+		page.MustWaitLoad()
+	}
+
 	// Check if login was successful by checking page URL
 	logger.Info("Checking if login was successful")
 

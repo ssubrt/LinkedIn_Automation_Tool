@@ -1,30 +1,45 @@
 # LinkedIn Automation
 
-A sophisticated Go application for automating LinkedIn login and interactions with human-like behavior simulation using the Rod browser automation library.
+A sophisticated Go application for automating LinkedIn login, people search, and interactions with human-like behavior simulation using the Rod browser automation library.
 
 ## Overview
 
-This project uses [Rod](https://go-rod.github.io/) to automate browser interactions with LinkedIn. It features advanced stealth techniques including random mouse movements, natural scrolling patterns, and realistic typing speeds to avoid detection by anti-bot systems.
+This project uses [Rod](https://go-rod.github.io/) to automate browser interactions with LinkedIn. It features advanced stealth techniques including random mouse movements, natural scrolling patterns, realistic typing speeds, and comprehensive anti-detection measures to avoid LinkedIn's bot detection systems.
 
 ## Features
 
 - **Automated LinkedIn Login** - Logs into LinkedIn with email/password credentials
+- **2FA/CAPTCHA Detection** - Pauses for manual intervention when challenges are detected
+- **LinkedIn People Search**:
+  - Filter by keywords, job title, company, and location
+  - Pagination support (scrape multiple pages)
+  - Duplicate detection (skip profiles visited in last 30 days)
+  - Location-based targeting (50+ supported locations worldwide)
+  - Profile data extraction (name, title, company, location, connection degree)
+  - Database storage for persistent profile tracking
 - **Human-like Behavior Simulation**:
-  - Random mouse movements (3-5 movements with natural pauses)
-  - Random page scrolling (3-5 scrolls with reading time)
-  - Realistic typing speeds
+  - Bézier curve mouse movements (natural acceleration/deceleration)
+  - Random page scrolling with reading pauses
+  - Realistic typing speeds with variance
   - Random delays between actions (simulating human reaction time)
-- **Stealth Fingerprint Masking** - Masks automation indicators to avoid detection
+  - Hover over interactive elements (2-3 random hovers per page)
+- **Advanced Stealth Techniques**:
+  - Comprehensive fingerprint masking (navigator.webdriver, canvas, WebGL, etc.)
+  - Business hours scheduling (only run 9 AM - 5 PM weekdays)
+  - Rate limiting (14 connections/day, 50 messages/day, 100 searches/day)
+  - Cooldown periods (30 seconds between actions)
+  - Persistent browser sessions (avoid repeated logins)
+- **SQLite Database** - Tracks profiles, connections, messages, and rate limits
+- **Session Persistence** - Saves browser state to skip login on subsequent runs
 - **Comprehensive Logging** - Detailed logs of all actions performed
-- **Browser Automation** - Full control over browser interactions using Rod library
-- **Environment-based Credentials** - Secure credential management via .env file
+- **Environment-based Configuration** - Secure credential and settings management
 
 ## Prerequisites
 
 - **Go 1.24.5** or higher
 - **Chrome/Chromium browser** (Rod will auto-download if not present)
-- **Windows Defender exclusion** (optional, see troubleshooting)
-- **.env file** with LinkedIn credentials
+- **SQLite3** (included with Go)
+- **.env file** with LinkedIn credentials and search configuration
 
 ## Installation
 
@@ -41,8 +56,33 @@ go mod tidy
 
 3. Create a `.env` file in the project root:
 ```env
+# LinkedIn Credentials
 LINKEDIN_EMAIL=your_email@example.com
 LINKEDIN_PASSWORD=your_password
+
+# Database Configuration
+DATABASE_PATH=./data/linkedin_automation.db
+
+# Rate Limits
+MAX_CONNECTIONS_PER_DAY=14
+MAX_MESSAGES_PER_DAY=50
+MAX_SEARCHES_PER_DAY=100
+COOLDOWN_SECONDS=30
+
+# Activity Scheduling
+ACTIVE_HOURS_START=9
+ACTIVE_HOURS_END=17
+WEEKDAYS_ONLY=true
+
+# Session Configuration
+SESSION_VALIDITY_DAYS=7
+BROWSER_DATA_DIR=./browser_data
+
+# Search Configuration
+SEARCH_KEYWORDS=software engineer
+SEARCH_JOB_TITLE=
+SEARCH_COMPANY=
+SEARCH_LOCATION=San Francisco Bay Area
 ```
 
 4. Build the project (optional):
@@ -271,47 +311,180 @@ linkedin-automation/
 ├── main.go                    # Entry point - orchestrates the automation workflow
 ├── go.mod                     # Go module definition
 ├── go.sum                     # Dependency checksums
-├── .env                       # Environment variables (credentials)
+├── .env                       # Environment variables (credentials + config)
+├── .env.example               # Example environment configuration
 ├── README.md                  # This file
+│
+├── data/
+│   └── linkedin_automation.db # SQLite database (auto-created)
+│
+├── browser_data/              # Persistent browser session data (auto-created)
 │
 ├── internal/
 │   ├── automation/
-│   │   └── login.go           # LinkedIn login automation logic
+│   │   ├── login.go           # LinkedIn login automation with 2FA detection
+│   │   ├── search.go          # People search with pagination & duplicate detection
+│   │   ├── scheduler.go       # Business hours scheduling (9 AM - 5 PM weekdays)
+│   │   └── ratelimiter.go     # Rate limiting (connections, messages, searches)
 │   │
 │   ├── browser/
-│   │   ├── browser.go         # Browser initialization, page opening, stealth actions
-│   │   └── fingerprint.go     # Anti-detection fingerprint masking
+│   │   ├── browser.go         # Browser initialization with UserDataDir
+│   │   └── fingerprint.go     # Anti-detection fingerprint masking (10+ techniques)
 │   │
 │   ├── logger/
 │   │   └── logger.go          # Centralized logging utility
 │   │
 │   ├── stealth/
 │   │   ├── delay.go           # Random delay generation for human-like timing
-│   │   ├── mouse.go           # Random mouse movement simulation (3-5 movements)
-│   │   ├── scroll.go          # Random page scrolling simulation (3-5 scrolls)
+│   │   ├── mouse.go           # Bézier curve mouse movements + element hovering
+│   │   ├── scroll.go          # Random page scrolling with natural patterns
 │   │   └── typing.go          # Human-like typing speed simulation
 │   │
-│   ├── storage/
-│   │   └── state.go           # Application state persistence
-│   │
-│   ├── config/                # Configuration management
-│   └── models/                # Data models
+│   └── storage/
+│       ├── database.go        # SQLite database operations (profiles, connections, etc.)
+│       └── state.go           # Session state persistence (JSON)
 │
 └── pkg/
-    ├── models/                # Public data models
-    └── utils/                 # Public utility functions
+    ├── models/
+    │   └── models.go          # Public data models (Profile, Connection, Message)
+    └── utils/
+        ├── constants.go       # LinkedIn URLs, selectors, location URN codes
+        ├── helpers.go         # Utility helper functions
+        └── validators.go      # Input validation functions
 
-tests/                         # Test files
+tests/                         # Integration and unit tests
+```
+
+## Search Configuration
+
+### Supported Locations
+
+The search module supports 50+ locations worldwide (see `pkg/utils/constants.go`):
+
+**United States:**
+- Major cities: San Francisco Bay Area, New York City Area, Los Angeles, Chicago, Boston, Seattle, Austin, etc.
+- States: California, New York, Texas, Florida, etc.
+- Country-wide: United States
+
+**International:**
+- Countries: United Kingdom, Canada, Germany, France, India, Australia, Singapore, Japan, etc.
+- Major cities: London, Toronto, Berlin, Paris, Sydney, Bangalore, Tokyo, Dubai, etc.
+
+### Search Parameters
+
+Configure search in your `.env` file:
+
+```env
+# Required - at least one must be set
+SEARCH_KEYWORDS=software engineer    # General keywords
+SEARCH_JOB_TITLE=Senior Engineer     # Filter by job title
+SEARCH_COMPANY=Google                # Filter by company name
+
+# Location filter (must match location name exactly)
+SEARCH_LOCATION=San Francisco Bay Area
+
+# The system will:
+# - Search LinkedIn for profiles matching your criteria
+# - Extract profile data (name, title, company, location)
+# - Check for duplicates (profiles visited in last 30 days)
+# - Save new profiles to SQLite database
+# - Display statistics (total found, new saved, duplicates skipped)
+```
+
+### Search Examples
+
+**Example 1: Find AI Researchers in San Francisco**
+```env
+SEARCH_KEYWORDS=artificial intelligence machine learning
+SEARCH_JOB_TITLE=Research Scientist
+SEARCH_LOCATION=San Francisco Bay Area
+```
+
+**Example 2: Find CTOs at Startups in New York**
+```env
+SEARCH_KEYWORDS=startup founder
+SEARCH_JOB_TITLE=CTO
+SEARCH_LOCATION=New York City Area
+```
+
+**Example 3: Find Product Managers at Google**
+```env
+SEARCH_KEYWORDS=product manager
+SEARCH_COMPANY=Google
+SEARCH_LOCATION=United States
+```
+
+### Search Output
+
+The search module will:
+1. Navigate to LinkedIn people search with your filters
+2. Extract profiles from each page (up to 3 pages by default)
+3. Check database for duplicates (profiles visited in last 30 days)
+4. Save new profiles to SQLite database
+5. Display statistics:
+
+```
+========== Search Statistics ==========
+Total profiles found: 27
+New profiles saved: 22
+Duplicates skipped: 5
+Pages scraped: 3
+Errors encountered: 0
+Duration: 1m 23s
+=======================================
+```
+
+### Database Schema
+
+Profiles are stored in SQLite with the following structure:
+
+```sql
+CREATE TABLE profiles (
+    id TEXT PRIMARY KEY,          -- LinkedIn profile ID (e.g., "john-doe")
+    name TEXT,                     -- Full name
+    title TEXT,                    -- Current job title
+    company TEXT,                  -- Current company
+    location TEXT,                 -- Geographic location
+    profile_url TEXT,              -- Full LinkedIn URL
+    visited_at DATETIME,           -- Last visit timestamp
+    created_at DATETIME            -- First scraped timestamp
+);
 ```
 
 ## Configuration
 
 ### .env File Requirements
 
-Create a `.env` file in the project root with your LinkedIn credentials:
+Create a `.env` file in the project root (see `.env.example` for template):
+
 ```env
+# LinkedIn Credentials
 LINKEDIN_EMAIL=your_email@example.com
 LINKEDIN_PASSWORD=your_password
+
+# Database Configuration
+DATABASE_PATH=./data/linkedin_automation.db
+
+# Rate Limits (safe defaults to avoid account restrictions)
+MAX_CONNECTIONS_PER_DAY=14      # ~100 connections/week limit
+MAX_MESSAGES_PER_DAY=50         # LinkedIn's typical message limit
+MAX_SEARCHES_PER_DAY=100        # Conservative search limit
+COOLDOWN_SECONDS=30             # Delay between actions
+
+# Activity Scheduling (business hours only)
+ACTIVE_HOURS_START=9            # Start at 9 AM
+ACTIVE_HOURS_END=17             # End at 5 PM
+WEEKDAYS_ONLY=true              # Only run Monday-Friday
+
+# Session Configuration
+SESSION_VALIDITY_DAYS=7         # Session expires after 7 days
+BROWSER_DATA_DIR=./browser_data # Persistent browser data directory
+
+# Search Configuration
+SEARCH_KEYWORDS=software engineer
+SEARCH_JOB_TITLE=
+SEARCH_COMPANY=
+SEARCH_LOCATION=San Francisco Bay Area
 ```
 
 ⚠️ **Security Warning**: Never commit `.env` files to version control. Add it to `.gitignore`.

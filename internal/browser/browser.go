@@ -75,11 +75,23 @@ func PerformStealthActions(page *rod.Page) {
 	logger.Info("Stealth actions completed")
 }
 
-// OpenPage opens a new page and navigates to the specified URL
+// OpenPage opens a new page, applies fingerprint masking, then navigates to the specified URL
+// This prevents race conditions where detection scripts run before masking is applied
 func OpenPage(browser *rod.Browser, url string) (*rod.Page, error) {
+	// Create a blank page first
 	page := browser.MustPage("about:blank")
 
-	err := page.Navigate(url)
+	// CRITICAL: Apply fingerprint masking BEFORE navigation
+	// This prevents LinkedIn's detection scripts from running before our masks are in place
+	logger.Info("Applying fingerprint masking to page before navigation...")
+	err := ApplyPageFingerprint(page)
+	if err != nil {
+		logger.Warning("Failed to apply fingerprint before navigation: " + err.Error())
+		// Continue anyway - better to try with partial masking than fail completely
+	}
+
+	// NOW navigate to the target URL with masking already applied
+	err = page.Navigate(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to navigate to %s: %w", url, err)
 	}

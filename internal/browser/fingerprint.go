@@ -1,15 +1,216 @@
 package browser
 
 import (
+	"fmt"
+	"math/rand"
+	"time"
+
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
+
+	"linkedin-automation/internal/logger"
+	"linkedin-automation/pkg/utils"
 )
 
-// ApplyFingerprintMasking applies basic anti-detection measures to the browser.
-// It configures the browser to mask itself as a legitimate user by ignoring certificate errors.
-// User agent should be set during browser launch in the StartBrowser function.
+// ApplyFingerprintMasking applies comprehensive anti-detection measures to the browser.
+// This includes masking automation indicators, randomizing browser properties,
+// and overriding JavaScript detection methods.
 func ApplyFingerprintMasking(br *rod.Browser) {
-	// Ignore certificate transparency and HSTS (HTTP Strict Transport Security) errors
-	// This prevents automation detection due to certificate validation issues
-	// which is a common stealth technique used in web automation
+	// Ignore certificate errors
 	br.MustIgnoreCertErrors(true)
+
+	logger.Info("Applying advanced fingerprint masking...")
+
+	// Get all pages and apply masking to each
+	pages := br.MustPages()
+	for _, page := range pages {
+		if err := ApplyPageFingerprint(page); err != nil {
+			logger.Warning("Failed to apply fingerprint to page: " + err.Error())
+		}
+	}
+}
+
+// ApplyPageFingerprint applies fingerprint masking to a specific page
+func ApplyPageFingerprint(page *rod.Page) error {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	// 1. Mask navigator.webdriver property
+	maskWebDriver := `
+		Object.defineProperty(navigator, 'webdriver', {
+			get: () => undefined
+		});
+	`
+
+	// 2. Override automation-related properties
+	maskAutomation := `
+		// Remove automation indicators
+		delete navigator.__proto__.webdriver;
+		
+		// Override chrome property to look legitimate
+		window.chrome = {
+			runtime: {},
+			loadTimes: function() {},
+			csi: function() {},
+			app: {}
+		};
+	`
+
+	// 3. Randomize plugin array (make it look like a real browser)
+	plugins := []string{
+		"Chrome PDF Plugin",
+		"Chrome PDF Viewer",
+		"Native Client",
+	}
+
+	maskPlugins := fmt.Sprintf(`
+		Object.defineProperty(navigator, 'plugins', {
+			get: () => [
+				{ name: '%s', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+				{ name: '%s', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: 'Portable Document Format' },
+				{ name: '%s', filename: 'internal-nacl-plugin', description: 'Native Client Executable' }
+			]
+		});
+	`, plugins[0], plugins[1], plugins[2])
+
+	// 4. Randomize languages
+	languages := []string{"en-US", "en"}
+	maskLanguages := fmt.Sprintf(`
+		Object.defineProperty(navigator, 'languages', {
+			get: () => ['%s', '%s']
+		});
+	`, languages[0], languages[1])
+
+	// 5. Override permissions API
+	maskPermissions := `
+		const originalQuery = window.navigator.permissions.query;
+		window.navigator.permissions.query = (parameters) => (
+			parameters.name === 'notifications' ?
+				Promise.resolve({ state: Notification.permission }) :
+				originalQuery(parameters)
+		);
+	`
+
+	// 6. Mask canvas fingerprinting
+	maskCanvas := `
+		const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+		const originalToBlob = HTMLCanvasElement.prototype.toBlob;
+		const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+		
+		// Add slight noise to canvas operations
+		const noisify = function(context, width, height, imageData) {
+			const data = imageData.data;
+			for (let i = 0; i < data.length; i += 4) {
+				// Add minimal noise to RGB values (±1-2)
+				data[i] = data[i] + Math.floor(Math.random() * 3) - 1;
+				data[i + 1] = data[i + 1] + Math.floor(Math.random() * 3) - 1;
+				data[i + 2] = data[i + 2] + Math.floor(Math.random() * 3) - 1;
+			}
+			return imageData;
+		};
+
+		CanvasRenderingContext2D.prototype.getImageData = function() {
+			const imageData = originalGetImageData.apply(this, arguments);
+			return noisify(this, arguments[2], arguments[3], imageData);
+		};
+	`
+
+	// 7. Mask WebGL fingerprinting
+	maskWebGL := `
+		const getParameter = WebGLRenderingContext.prototype.getParameter;
+		WebGLRenderingContext.prototype.getParameter = function(parameter) {
+			// Randomize vendor and renderer
+			if (parameter === 37445) {
+				return 'Intel Inc.';
+			}
+			if (parameter === 37446) {
+				return 'Intel Iris OpenGL Engine';
+			}
+			return getParameter.apply(this, arguments);
+		};
+	`
+
+	// 8. Spoof timezone and screen properties
+	screenWidth := 1920 + r.Intn(200) - 100  // 1820-2020
+	screenHeight := 1080 + r.Intn(200) - 100 // 980-1180
+
+	maskScreen := fmt.Sprintf(`
+		Object.defineProperty(screen, 'width', {
+			get: () => %d
+		});
+		Object.defineProperty(screen, 'height', {
+			get: () => %d
+		});
+		Object.defineProperty(screen, 'availWidth', {
+			get: () => %d
+		});
+		Object.defineProperty(screen, 'availHeight', {
+			get: () => %d
+		});
+	`, screenWidth, screenHeight, screenWidth, screenHeight-40)
+
+	// 9. Override battery API
+	maskBattery := `
+		if (navigator.getBattery) {
+			navigator.getBattery = () => Promise.resolve({
+				charging: true,
+				chargingTime: 0,
+				dischargingTime: Infinity,
+				level: 1,
+				addEventListener: () => {},
+				removeEventListener: () => {},
+				dispatchEvent: () => true
+			});
+		}
+	`
+
+	// 10. Mask connection API
+	maskConnection := `
+		if (navigator.connection) {
+			Object.defineProperty(navigator, 'connection', {
+				get: () => ({
+					effectiveType: '4g',
+					downlink: 10,
+					rtt: 50,
+					saveData: false
+				})
+			});
+		}
+	`
+
+	// Combine all masking scripts
+	fullScript := maskWebDriver + maskAutomation + maskPlugins + maskLanguages +
+		maskPermissions + maskCanvas + maskWebGL + maskScreen + maskBattery + maskConnection
+
+	// Execute the masking script
+	_, err := page.Eval(fullScript)
+	if err != nil {
+		return fmt.Errorf("failed to apply fingerprint masking: %w", err)
+	}
+
+	// Set custom user agent
+	err = page.SetUserAgent(&proto.NetworkSetUserAgentOverride{
+		UserAgent: utils.ChromeUserAgent,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set user agent: %w", err)
+	}
+
+	// Randomize viewport size
+	viewportWidth := 1366 + r.Intn(500) // 1366-1866
+	viewportHeight := 768 + r.Intn(300) // 768-1068
+
+	err = page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+		Width:             viewportWidth,
+		Height:            viewportHeight,
+		DeviceScaleFactor: 1,
+		Mobile:            false,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set viewport: %w", err)
+	}
+
+	logger.Info(fmt.Sprintf("Fingerprint applied: viewport %dx%d, screen %dx%d",
+		viewportWidth, viewportHeight, screenWidth, screenHeight))
+
+	return nil
 }
