@@ -239,25 +239,55 @@ func SendConnectionRequest(page *rod.Page, db *storage.Database, request Connect
 			moreButton.ScrollIntoView()
 			stealth.RandomDelay(500, 1000)
 			moreButton.Click(proto.InputMouseButtonLeft, 1)
-			stealth.RandomDelay(800, 1200)
+			stealth.RandomDelay(1000, 1500)
 
-			// After clicking More, a dropdown menu with role="menu" should appear
-			logger.Info("Waiting for dropdown menu after clicking More...")
-			menuEl, err := page.Timeout(3 * time.Second).Element("div[role='menu']")
-			if err != nil || menuEl == nil {
-				logger.Warning("Dropdown menu not found after clicking More")
-			} else {
-				// Look for any element inside the menu whose visible text contains 'Connect'
-				logger.Info("Searching for 'Connect' item inside dropdown menu...")
-				btn, err := menuEl.ElementR("*", `(?i)\\bConnect\\b`)
+			dropdownConnectSelectors := []string{
+				"div[role='button']:has-text('Connect')",
+				"span:has-text('Connect')",
+				".artdeco-dropdown__item:has-text('Connect')",
+			}
+
+			for _, sel := range dropdownConnectSelectors {
+				btn, err := page.Timeout(2 * time.Second).Element(sel)
 				if err == nil && btn != nil {
 					if visible, _ := btn.Visible(); visible {
-						logger.Info("Found Connect item inside dropdown menu")
+						logger.Info("Found Connect button in dropdown")
+						connectButton = btn
+						found = true
+						break
+					}
+				}
+			}
+
+			// Fallback: JS-based search strictly inside the open dropdown menu
+			if !found {
+				logger.Info("Dropdown selectors failed, running JS-based menu scan for 'Connect' item...")
+				js := `() => {
+					const menus = Array.from(document.querySelectorAll("div[role='menu']"));
+					if (!menus.length) return null;
+					// Prefer visible menu
+					const visibleMenus = menus.filter(m => m.offsetParent !== null);
+					const root = visibleMenus[0] || menus[0];
+					// Log menu items for debugging
+					const texts = Array.from(root.querySelectorAll("*"))
+						.map(el => (el.innerText || '').trim())
+						.filter(t => t);
+					console.log('DEBUG_MENU_ITEMS', texts);
+					// Find the first element whose visible text is exactly 'Connect'
+					const candidates = Array.from(root.querySelectorAll("*"));
+					const target = candidates.find(el => (el.innerText || '').trim() === 'Connect');
+					return target || null;
+				}`
+
+				btn, err := page.Timeout(3 * time.Second).ElementByJS(rod.Eval(js))
+				if err == nil && btn != nil {
+					if visible, _ := btn.Visible(); visible {
+						logger.Info("Found Connect button in dropdown via JS scan")
 						connectButton = btn
 						found = true
 					}
 				} else {
-					logger.Warning("No 'Connect' item found inside dropdown menu")
+					logger.Warning("JS-based dropdown scan did not find 'Connect' item or errored: " + fmt.Sprint(err))
 				}
 			}
 		}
