@@ -18,10 +18,20 @@ type BrowserConfig struct {
 }
 
 // StartBrowser launches and returns a Rod Browser instance with persistent session support
+// Reads HEADLESS configuration from environment variable
 func StartBrowser() (*rod.Browser, error) {
+	// Read headless mode from environment (default: false for visibility)
+	headless := false
+	if os.Getenv("HEADLESS") == "true" {
+		headless = true
+		logger.Info("Browser starting in headless mode (no visible window)")
+	} else {
+		logger.Info("Browser starting in visible mode")
+	}
+
 	return StartBrowserWithConfig(BrowserConfig{
 		UserDataDir: "./browser_data",
-		Headless:    false,
+		Headless:    headless,
 	})
 }
 

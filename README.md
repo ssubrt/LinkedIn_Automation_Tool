@@ -17,6 +17,21 @@ This project uses [Rod](https://go-rod.github.io/) to automate browser interacti
   - Location-based targeting (50+ supported locations worldwide)
   - Profile data extraction (name, title, company, location, connection degree)
   - Database storage for persistent profile tracking
+- **Connection Request Automation**:
+  - Send personalized connection requests with custom notes
+  - 6 professional templates (generic, role-specific, industry, mutual interest, networking, brief)
+  - Variable substitution ({{.FirstName}}, {{.Company}}, {{.YourTitle}}, etc.)
+  - Character limit enforcement (300 chars for LinkedIn notes)
+  - "More..." dropdown handling for 3rd-degree connections
+  - Pending/accepted/connected status tracking
+  - Rate limiting (14 connections/day)
+- **Messaging Automation**:
+  - Send personalized messages to accepted connections only
+  - 5 message templates (introduction, follow-up, networking, collaboration, value-add)
+  - Subject line and body rendering
+  - Character limit enforcement (8000 chars for messages)
+  - Automatic detection of accepted connections
+  - Rate limiting (50 messages/day)
 - **Human-like Behavior Simulation**:
   - Bézier curve mouse movements (natural acceleration/deceleration)
   - Random page scrolling with reading pauses
@@ -29,7 +44,8 @@ This project uses [Rod](https://go-rod.github.io/) to automate browser interacti
   - Rate limiting (14 connections/day, 50 messages/day, 100 searches/day)
   - Cooldown periods (30 seconds between actions)
   - Persistent browser sessions (avoid repeated logins)
-- **SQLite Database** - Tracks profiles, connections, messages, and rate limits
+  - Connection status detection (auto-update from pending to accepted)
+- **SQLite Database** - Tracks profiles, connections, messages, rate limits, and connection statuses
 - **Session Persistence** - Saves browser state to skip login on subsequent runs
 - **Comprehensive Logging** - Detailed logs of all actions performed
 - **Environment-based Configuration** - Secure credential and settings management
@@ -83,6 +99,25 @@ SEARCH_KEYWORDS=software engineer
 SEARCH_JOB_TITLE=
 SEARCH_COMPANY=
 SEARCH_LOCATION=San Francisco Bay Area
+
+# Connection Request Configuration
+ENABLE_CONNECTIONS=false
+MAX_CONNECTIONS_PER_RUN=5
+YOUR_NAME=Your Full Name
+YOUR_TITLE=Your Job Title
+YOUR_COMPANY=Your Company Name
+YOUR_INDUSTRY=Your Industry
+CONNECTION_TEMPLATE=conn_generic
+CONNECTION_CUSTOM_REASON=I'm interested in your work
+
+# Connection Status Check
+CHECK_CONNECTION_STATUS=false
+
+# Messaging Configuration
+ENABLE_MESSAGING=false
+MAX_MESSAGES_PER_RUN=3
+MESSAGE_TEMPLATE=msg_introduction
+MESSAGE_CUSTOM_REASON=I have insights I think you'd find valuable
 ```
 
 4. Build the project (optional):
@@ -450,6 +485,147 @@ CREATE TABLE profiles (
     created_at DATETIME            -- First scraped timestamp
 );
 ```
+
+---
+
+## Automation Workflows
+
+### Complete Workflow: Search → Connect → Message
+
+#### Step 1: Search for Target Profiles
+```bash
+# Configure .env
+SEARCH_KEYWORDS=software engineer
+SEARCH_JOB_TITLE=Senior Engineer
+SEARCH_COMPANY=Google
+SEARCH_LOCATION=San Francisco Bay Area
+```
+
+Run the automation - profiles are saved to database for future use.
+
+#### Step 2: Send Connection Requests
+```bash
+# Enable connections in .env
+ENABLE_CONNECTIONS=true
+MAX_CONNECTIONS_PER_RUN=5
+YOUR_NAME=John Smith
+YOUR_TITLE=CTO
+YOUR_COMPANY=TechCorp
+CONNECTION_TEMPLATE=conn_role_specific
+```
+
+**Available Templates:**
+- `conn_generic` - Generic professional connection
+- `conn_role_specific` - Based on similar roles
+- `conn_industry` - Shared industry connection
+- `conn_mutual_interest` - With custom reason
+- `conn_networking` - General networking expansion
+- `conn_brief` - Short and direct
+
+**Example Output:**
+```
+[INFO] Sending connection request to: Sarah Johnson
+[INFO] Clicking Connect button...
+[INFO] Adding personalized note...
+[INFO] Connection request sent successfully
+
+========== Connection Request Statistics ==========
+Total attempted: 5
+Successful: 4
+Failed: 0
+Already connected: 0
+Already pending: 1
+===================================================
+```
+
+#### Step 3: Check Connection Status (Optional but Recommended)
+```bash
+# Enable status checking in .env
+CHECK_CONNECTION_STATUS=true
+```
+
+This navigates to pending connections and checks if they've been accepted. Updates database status from 'pending' to 'accepted'.
+
+**Example Output:**
+```
+[INFO] Checking connection request statuses...
+[INFO] Checking status for 4 pending connections
+[INFO] Connection accepted: sarah-johnson-123
+[INFO] Connection accepted: mike-chen-456
+[INFO] Updated 2 accepted connections
+```
+
+#### Step 4: Message Accepted Connections
+```bash
+# Enable messaging in .env
+ENABLE_MESSAGING=true
+MAX_MESSAGES_PER_RUN=3
+MESSAGE_TEMPLATE=msg_introduction
+```
+
+**Available Templates:**
+- `msg_introduction` - Professional introduction after connecting
+- `msg_follow_up` - Follow-up after no response
+- `msg_networking` - Networking and career advice
+- `msg_collaboration` - Business collaboration proposal
+- `msg_value_add` - Offering value or insights
+
+**Example Output:**
+```
+[INFO] Starting messaging automation...
+[INFO] Found 2 accepted connections for messaging
+[INFO] Sending message to: Sarah Johnson
+[INFO] Typing message (254 characters)...
+[INFO] Message sent successfully
+
+========== Messaging Statistics ==========
+Total attempted: 2
+Successful: 2
+Failed: 0
+==========================================
+```
+
+### Template Variable Substitution
+
+Templates support these variables:
+- `{{.FirstName}}` - Auto-extracted from full name
+- `{{.LastName}}` - Auto-extracted from full name
+- `{{.FullName}}` - Complete name
+- `{{.Title}}` - Job title
+- `{{.Company}}` - Company name
+- `{{.Industry}}` - Industry
+- `{{.YourName}}` - Your name (from .env)
+- `{{.YourTitle}}` - Your title (from .env)
+- `{{.YourCompany}}` - Your company (from .env)
+- `{{.CustomReason}}` - Custom message (from .env)
+- `{{.Date}}` - Auto-populated date
+
+**Example Template Rendering:**
+```
+Template: "Hi {{.FirstName}}, I'm {{.YourTitle}} at {{.YourCompany}}"
+Output: "Hi Sarah, I'm CTO at TechCorp"
+```
+
+### Safety Features
+
+**Rate Limiting:**
+- Connections: 14 per day (LinkedIn limit)
+- Messages: 50 per day (LinkedIn limit)
+- Searches: 100 per day (conservative limit)
+- Cooldown: 30 seconds between actions
+
+**Duplicate Prevention:**
+- Connection requests tracked in database
+- Messages only sent to accepted connections
+- Profiles checked for duplicates (30-day window)
+
+**Edge Case Handling:**
+- "More..." button detection for 3rd-degree connections
+- Pending vs. accepted status distinction
+- Already connected detection
+- Character limit enforcement (300 for notes, 8000 for messages)
+
+---
 
 ## Configuration
 

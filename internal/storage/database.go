@@ -98,6 +98,7 @@ func (db *Database) createTables() error {
 		sent_at DATETIME NOT NULL,
 		note_used TEXT,
 		status TEXT DEFAULT 'pending',
+		has_replied BOOLEAN DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (profile_id) REFERENCES profiles(id)
 	);
@@ -174,7 +175,7 @@ func (db *Database) SaveProfile(profile Profile) error {
 func (db *Database) IsDuplicateProfile(profileID string, daysSince int) (bool, error) {
 	query := `
 		SELECT COUNT(*) FROM profiles
-		WHERE id = ? AND visited_at > datetime('now', '-' || ? || ' days')
+		WHERE id = ? AND datetime(visited_at, 'utc') > datetime('now', '-' || ? || ' days')
 	`
 
 	var count int
@@ -465,6 +466,48 @@ func (db *Database) IncrementSearchCount() error {
 	return err
 }
 
+// GetRecentProfiles retrieves recent profiles that haven't been contacted
+func (db *Database) GetRecentProfiles(limit int, daysBack int) ([]Profile, error) {
+	query := `
+		SELECT DISTINCT p.id, p.name, p.title, p.company, p.location, p.profile_url, p.visited_at, p.created_at
+		FROM profiles p
+		WHERE datetime(p.visited_at, 'utc') >= datetime('now', '-' || ? || ' days')
+		AND p.id NOT IN (
+			SELECT profile_id FROM connection_requests
+			WHERE datetime(sent_at, 'utc') >= datetime('now', '-' || ? || ' days')
+		)
+		ORDER BY p.visited_at DESC
+		LIMIT ?
+	`
+
+	rows, err := db.conn.Query(query, daysBack, daysBack, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var profiles []Profile
+	for rows.Next() {
+		var profile Profile
+		err := rows.Scan(
+			&profile.ID,
+			&profile.Name,
+			&profile.Title,
+			&profile.Company,
+			&profile.Location,
+			&profile.ProfileURL,
+			&profile.VisitedAt,
+			&profile.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+
+	return profiles, rows.Err()
+}
+
 // GetDailyStats retrieves statistics for a specific date
 func (db *Database) GetDailyStats(date string) (*RateLimit, error) {
 	query := `
@@ -496,4 +539,61 @@ func (db *Database) GetDailyStats(date string) (*RateLimit, error) {
 	}
 
 	return &limit, nil
+}
+
+// GetAcceptedConnectionProfiles retrieves profiles where connection was accepted and haven't been messaged yet
+// This is used for messaging automation to only message actual connections
+func (db *Database) GetAcceptedConnectionProfiles(limit int, daysBack int) ([]Profile, error) {
+	query := `
+		SELECT DISTINCT p.id, p.name, p.title, p.company, p.location, p.profile_url, p.visited_at, p.created_at
+		FROM profiles p
+		INNER JOIN connection_requests cr ON p.id = cr.profile_id
+		WHERE cr.status = 'accepted'
+		AND (cr.has_replied IS NULL OR cr.has_replied = 0)
+		AND datetime(cr.sent_at, 'utc') >= datetime('now', '-' || ? || ' days')
+		AND p.id NOT IN (
+			SELECT connection_id FROM messages
+			WHERE datetime(sent_at, 'utc') >= datetime('now', '-' || ? || ' days')
+		)
+		ORDER BY cr.sent_at DESC
+		LIMIT ?
+	`
+
+	rows, err := db.conn.Query(query, daysBack, daysBack, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var profiles []Profile
+	for rows.Next() {
+		var profile Profile
+		err := rows.Scan(
+			&profile.ID,
+			&profile.Name,
+			&profile.Title,
+			&profile.Company,
+			&profile.Location,
+			&profile.ProfileURL,
+			&profile.VisitedAt,
+			&profile.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+
+	return profiles, rows.Err()
+}
+
+// UpdateConnectionReplyStatus updates the has_replied status for a connection
+func (db *Database) UpdateConnectionReplyStatus(profileID string, hasReplied bool) error {
+	query := `
+		UPDATE connection_requests
+		SET has_replied = ?
+		WHERE profile_id = ?
+	`
+	_, err := db.conn.Exec(query, hasReplied, profileID)
+	return err
 }

@@ -64,3 +64,57 @@ func ReverseString(s string) string {
 	}
 	return string(runes)
 }
+
+// IsLinkedInCheckpoint checks if the current URL is a LinkedIn verification/checkpoint page
+// These pages appear when LinkedIn suspects automation and requires manual verification
+func IsLinkedInCheckpoint(url string) bool {
+	checkpointPatterns := []string{
+		"/checkpoint/",
+		"/challenge/",
+		"/uas/login-verification",
+		"/uas/challenge",
+		"/cap/", // CAPTCHA page
+	}
+
+	for _, pattern := range checkpointPatterns {
+		if len(url) > 0 && ContainsString([]string{url}, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// ExtractProfileID extracts the profile ID from a LinkedIn URL
+func ExtractProfileID(url string) string {
+	// Remove query parameters
+	// URLs are typically https://www.linkedin.com/in/profile-id/
+	// or /in/profile-id/
+
+	// Find /in/
+	inIdx := -1
+	for i := 0; i < len(url)-3; i++ {
+		if url[i:i+4] == "/in/" {
+			inIdx = i
+			break
+		}
+	}
+
+	if inIdx != -1 {
+		start := inIdx + 4
+		end := len(url)
+
+		// Find next slash or ?
+		for i := start; i < len(url); i++ {
+			if url[i] == '/' || url[i] == '?' {
+				end = i
+				break
+			}
+		}
+
+		if start < end {
+			return url[start:end]
+		}
+	}
+
+	return ""
+}

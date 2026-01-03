@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"linkedin-automation/internal/automation"
 	"linkedin-automation/internal/browser"
@@ -34,12 +35,12 @@ func main() {
 	}
 
 	// Step 2: Check if we're in active hours (business hours)
-	logger.Info("Checking activity schedule...")
-	if !automation.IsActiveHours() {
-		logger.Warning("Outside active hours - waiting for business hours...")
-		automation.WaitForActiveHours()
-	}
-	logger.Info("Within active hours - proceeding with automation")
+	// logger.Info("Checking activity schedule...")
+	// if !automation.IsActiveHours() {
+	// 	logger.Warning("Outside active hours - waiting for business hours...")
+	// 	automation.WaitForActiveHours()
+	// }
+	// logger.Info("Within active hours - proceeding with automation")
 
 	// Step 3: Initialize SQLite database
 	dbPath := os.Getenv("DATABASE_PATH")
@@ -215,7 +216,7 @@ func main() {
 		logger.Info(fmt.Sprintf("  Location: %s", searchConfig.Location))
 
 		// Execute the search
-		searchStats, err := automation.SearchPeople(page, db, searchConfig)
+		searchResults, searchStats, err := automation.SearchPeople(page, db, searchConfig)
 		if err != nil {
 			logger.Error("Search failed: " + err.Error())
 		} else {
@@ -241,12 +242,137 @@ func main() {
 				logger.Warning("⚠️  LinkedIn may have changed their HTML selectors.")
 				logger.Warning("⚠️  Check constants.go and update SearchResultItemSelector if needed.")
 			}
+
+			// IMMEDIATE CONNECTION FLOW
+			// Connect to found profiles immediately (limit to 3)
+			if len(searchResults) > 0 && os.Getenv("ENABLE_CONNECTIONS") == "true" {
+				logger.Info("Starting immediate connection requests for found profiles...")
+
+				count := 0
+				for _, result := range searchResults {
+					if count >= 3 {
+						break
+					}
+
+					// Check rate limit
+					if err := rateLimiter.CheckDailyLimit(automation.TaskConnection); err != nil {
+						logger.Warning("Connection rate limit reached")
+						break
+					}
+
+					// Prepare request
+					req := automation.ConnectionRequest{
+						ProfileID:   result.ProfileID,
+						ProfileURL:  result.ProfileURL,
+						Name:        result.Name,
+						Title:       result.Title,
+						Company:     result.Company,
+						RequestedAt: time.Now(),
+						// TemplateID can be added here if needed
+					}
+
+					// Send request
+					err := automation.SendConnectionRequest(page, db, req)
+					if err != nil {
+						logger.Error("Failed to connect to " + result.Name + ": " + err.Error())
+					} else {
+						logger.Info("Connection request sent to " + result.Name)
+						rateLimiter.RecordAction(automation.TaskConnection)
+						count++
+					}
+				}
+			}
 		}
 	} else {
 		logger.Warning("Search rate limit reached - skipping search for today")
 	}
 
-	// Step 9: Display final stats
+	// Step 9: Send connection requests (if enabled)
+	// NOTE: This step is redundant if we are doing immediate connections above.
+	// However, it's useful for processing profiles found in previous runs.
+	if os.Getenv("ENABLE_CONNECTIONS") == "true" {
+		logger.Info("Starting connection request automation (processing backlog)...")
+
+		// Check rate limit
+		err = rateLimiter.CheckDailyLimit(automation.TaskConnection)
+		if err == nil {
+			// Get profiles that haven't been contacted yet
+			maxConnections := 5 // Limit to 5 connections per run for safety
+			if os.Getenv("MAX_CONNECTIONS_PER_RUN") != "" {
+				fmt.Sscanf(os.Getenv("MAX_CONNECTIONS_PER_RUN"), "%d", &maxConnections)
+			}
+
+			profiles, err := db.GetRecentProfiles(maxConnections, 30) // Get up to 5 profiles from last 30 days
+			if err != nil {
+				logger.Warning("Failed to get profiles for connections: " + err.Error())
+			} else if len(profiles) > 0 {
+				logger.Info(fmt.Sprintf("Found %d profiles for connection requests", len(profiles)))
+
+				// Prepare sender variables from environment
+				senderVars := automation.TemplateVariables{
+					YourName:     os.Getenv("YOUR_NAME"),
+					YourTitle:    os.Getenv("YOUR_TITLE"),
+					YourCompany:  os.Getenv("YOUR_COMPANY"),
+					Industry:     os.Getenv("YOUR_INDUSTRY"),
+					CustomReason: os.Getenv("CONNECTION_CUSTOM_REASON"),
+				}
+
+				// Get template ID from environment (default to generic)
+				templateID := os.Getenv("CONNECTION_TEMPLATE")
+				if templateID == "" {
+					templateID = "conn_generic"
+				}
+
+				// Prepare connection requests
+				var requests []automation.ConnectionRequest
+				for _, profile := range profiles {
+					request, err := automation.PrepareConnectionRequestFromProfile(profile, templateID, senderVars)
+					if err != nil {
+						logger.Warning(fmt.Sprintf("Failed to prepare connection for %s: %s", profile.Name, err.Error()))
+						continue
+					}
+					requests = append(requests, *request)
+				}
+
+				if len(requests) > 0 {
+					// Send connection requests
+					connStats := automation.SendConnectionRequests(page, db, rateLimiter, requests)
+
+					// Display stats
+					fmt.Println("\n========== Connection Request Statistics ==========")
+					fmt.Printf("Total attempted: %d\n", connStats.TotalAttempted)
+					fmt.Printf("Successful: %d\n", connStats.Successful)
+					fmt.Printf("Failed: %d\n", connStats.Failed)
+					fmt.Printf("Already connected: %d\n", connStats.AlreadyConnected)
+					fmt.Printf("Already pending: %d\n", connStats.Pending)
+					if len(connStats.Errors) > 0 {
+						fmt.Printf("Errors: %d\n", len(connStats.Errors))
+						for i, errMsg := range connStats.Errors {
+							if i < 3 { // Show first 3 errors
+								fmt.Printf("  - %s\n", errMsg)
+							}
+						}
+					}
+					fmt.Printf("Duration: %s\n", connStats.EndTime.Sub(connStats.StartTime))
+					fmt.Println("===================================================")
+				}
+			} else {
+				logger.Info("No profiles available for connection requests")
+			}
+		} else {
+			logger.Warning("Connection rate limit reached - skipping connections for today")
+		}
+	}
+
+	// Step 10: Execute daily follow-up workflow (Connection checks, Reply detection, Messaging)
+	if os.Getenv("ENABLE_MESSAGING") == "true" || os.Getenv("CHECK_CONNECTION_STATUS") == "true" {
+		err = automation.ProcessDailyFollowUps(page, db, rateLimiter)
+		if err != nil {
+			logger.Error("Daily follow-up workflow failed: " + err.Error())
+		}
+	}
+
+	// Step 11: Display final stats
 	logger.Info("Automation workflow completed successfully!")
 
 	// Show rate limit summary

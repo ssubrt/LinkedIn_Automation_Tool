@@ -155,14 +155,14 @@ var LinkedInLocations = map[string]string{
 // 4. Update the constants below
 // Last verified: December 2025
 const (
-	SearchResultContainerSelector = ".reusable-search__result-container" // Alternative: .search-results-container
-	SearchResultItemSelector      = ".entity-result"                     // Alternative: .search-result__info
-	SearchResultTitleSelector     = ".entity-result__title-text a"       // Alternative: .app-aware-link
-	SearchResultSubtitleSelector  = ".entity-result__primary-subtitle"   // Alternative: .entity-result__subtitle
-	SearchResultSecondarySelector = ".entity-result__secondary-subtitle" // Alternative: .entity-result__summary
-	SearchResultLinkSelector      = "a.app-aware-link"                   // Alternative: a[href*='/in/']
-	PaginationNextButtonSelector  = ".artdeco-pagination__button--next"  // Alternative: button[aria-label='Next']
-	PaginationDisabledClass       = "artdeco-button--disabled"           // Check for 'disabled' attribute too
+	SearchResultContainerSelector = ".reusable-search__result-container"                                                       // Alternative: .search-results-container
+	SearchResultItemSelector      = ".reusable-search__result-container, .entity-result, li.reusable-search__result-container" // Multiple fallback selectors
+	SearchResultTitleSelector     = ".entity-result__title-text a"                                                             // Alternative: .app-aware-link
+	SearchResultSubtitleSelector  = ".entity-result__primary-subtitle"                                                         // Alternative: .entity-result__subtitle
+	SearchResultSecondarySelector = ".entity-result__secondary-subtitle"                                                       // Alternative: .entity-result__summary
+	SearchResultLinkSelector      = "a.app-aware-link"                                                                         // Alternative: a[href*='/in/']
+	PaginationNextButtonSelector  = ".artdeco-pagination__button--next"                                                        // Alternative: button[aria-label='Next']
+	PaginationDisabledClass       = "artdeco-button--disabled"                                                                 // Check for 'disabled' attribute too
 )
 
 // Search constraints
@@ -170,4 +170,41 @@ const (
 	MaxSearchResultsPerPage = 10
 	MaxPaginationPages      = 100
 	SearchDelaySeconds      = 2
+)
+
+// Connection request selectors
+// ⚠️  WARNING: LinkedIn changes these selectors frequently
+// Last verified: December 2025
+const (
+	ConnectButtonSelector           = "button[aria-label*='Connect']"                           // Main connect button on profile
+	ConnectButtonAltSelector        = ".pvs-profile-actions__action button:has-text('Connect')" // Alternative
+	MoreActionsButtonSelector       = "button[aria-label='More actions']"                       // More actions dropdown (for 3rd-degree connections)
+	MoreActionsButtonAltSelector    = "button:has-text('More')"                                 // Alternative More button
+	AddNoteButtonSelector           = "button[aria-label='Add a note']"                         // Button to add personalized note
+	ConnectionNoteTextareaSelector  = "#custom-message"                                         // Textarea for connection note
+	SendConnectionButtonSelector    = "button[aria-label='Send now']"                           // Send connection request button
+	SendConnectionButtonAltSelector = "button[type='submit']:has-text('Send')"                  // Alternative send button
+	AlreadyConnectedSelector        = "span:has-text('Connected')"                              // Indicator that already connected
+	PendingConnectionSelector       = "span:has-text('Pending')"                                // Indicator that connection pending
+)
+
+// Messaging selectors
+// ⚠️  WARNING: LinkedIn changes these selectors frequently
+// Last verified: December 2025
+const (
+	MessageButtonSelector        = "button[aria-label*='Message']"                           // Message button on profile
+	MessageButtonAltSelector     = ".pvs-profile-actions__action button:has-text('Message')" // Alternative
+	MessageComposerSelector      = ".msg-form__contenteditable"                              // Message composition area
+	MessageComposerAltSelector   = "div[role='textbox'][contenteditable='true']"             // Alternative composer
+	SendMessageButtonSelector    = "button[type='submit'][aria-label*='Send']"               // Send message button
+	SendMessageButtonAltSelector = ".msg-form__send-button"                                  // Alternative send button
+	ConversationSelector         = ".msg-overlay-conversation-bubble"                        // Message conversation container
+	MessageConfirmationSelector  = ".msg-s-message-list__event"                              // Message sent confirmation
+)
+
+// Connection/Message limits
+const (
+	ConnectionNoteMaxChars = 300  // LinkedIn's character limit for connection notes
+	MessageMaxChars        = 8000 // LinkedIn's character limit for messages
+	SubjectMaxChars        = 200  // LinkedIn's character limit for message subjects
 )
